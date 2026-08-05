@@ -59,9 +59,27 @@ app.put("/cds/:id", validateId, async (request, response, next) => {
   const { id } = request.params;
   const { title, artist, genre, year } = request.body;
 
-  if (!title || !artist || !genre || !year) {
-    response.status(400).json({
-      error: "Title, artist, genre and year are required.",
+  const cdUpdates = {};
+
+  if (title) {
+    cdUpdates.title = title;
+  }
+
+  if (artist) {
+    cdUpdates.artist = artist;
+  }
+
+  if (genre) {
+    cdUpdates.genre = genre;
+  }
+
+  if (year !== undefined) {
+    cdUpdates.year = year;
+  }
+
+  if (Object.keys(cdUpdates).length === 0) {
+    return response.status(400).json({
+      error: "At least one field must be provided to update CD.",
     });
   }
 
@@ -69,14 +87,12 @@ app.put("/cds/:id", validateId, async (request, response, next) => {
     const updatedCd = await Cd.findByIdAndUpdate(
       id,
       {
-        $set: {
-          title: title,
-          artist: artist,
-          genre: genre,
-          year: year,
-        },
+        $set: cdUpdates,
       },
-      { new: true },
+      {
+        new: true,
+        runValidators: true,
+      },
     );
 
     if (!updatedCd) {
