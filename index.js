@@ -1,65 +1,134 @@
-const express = require('express');
+const express = require("express");
+const mongoose = require("mongoose");
+
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
-// In-memory CD collection
-let cds = [
-  { id: 1, title: 'Hybrid Theory', artist: 'Linkin Park', genre: 'Rock', year: 2000 },
-  { id: 2, title: 'Thriller', artist: 'Michael Jackson', genre: 'Pop', year: 1982 },
-  { id: 3, title: 'The Eminem Show', artist: 'Eminem', genre: 'Hip-Hop', year: 2002 },
-  { id: 4, title: 'Back in Black', artist: 'AC/DC', genre: 'Rock', year: 1980 },
-  { id: 5, title: '21', artist: 'Adele', genre: 'Soul', year: 2011 },
-  { id: 6, title: 'Fearless', artist: 'Taylor Swift', genre: 'Country', year: 2008 },
-  { id: 7, title: 'Nevermind', artist: 'Nirvana', genre: 'Grunge', year: 1991 },
-  { id: 8, title: 'Future Nostalgia', artist: 'Dua Lipa', genre: 'Pop', year: 2020 },
-  { id: 9, title: 'American Idiot', artist: 'Green Day', genre: 'Punk Rock', year: 2004 },
-  { id: 10, title: 'Good Kid, M.A.A.D City', artist: 'Kendrick Lamar', genre: 'Hip-Hop', year: 2012 }
-];
+mongoose.connect("mongodb://127.0.0.1:27017/cds");
 
-let nextId = 11;
-
-// GET /cds - Return all CDs
-app.get('/cds', (req, res) => {
-  res.json(cds);
+const cdSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  artist: { type: String, required: true },
+  genre: { type: String, required: true },
+  year: { type: Number, required: true },
 });
 
-// POST /cds - Add a new CD
-app.post('/cds', (req, res) => {
-  const { title, artist, genre, year } = req.body;
-  const newCd = { id: nextId++, title, artist, genre, year };
-  cds.push(newCd);
-  res.status(201).json(newCd);
+const Cd = mongoose.model("cd", cdSchema, "cds");
+
+// ---------- GET /cds - Return all CDs ----------
+app.get("/cds", async (request, response, next) => {
+  try {
+    const cds = await Cd.find({}, { __v: 0 });
+
+    return response.json(cds);
+  } catch (error) {
+    next(error);
+  }
 });
 
-// PUT /cds/:id - Update an existing CD
-app.put('/cds/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const cd = cds.find(cd => cd.id === id);
+// ----------  POST /cds - Add a new CD ----------
+app.post("/cds", async (request, response, next) => {
+  const { title, artist, genre, year } = request.body;
 
-  const { title, artist, genre, year } = req.body;
-  if (title) cd.title = title;
-  if (artist) cd.artist = artist;
-  if (genre) cd.genre = genre;
-  if (year) cd.year = year;
+  if (!title || !artist || !genre || !year) {
+    response.status(400);
+    return response.json({
+      error: "Title, artist, genre, and year are required.",
+    });
+  }
 
-  res.json(cd);
+  try {
+    const newCd = new Cd({
+      title: title,
+      artist: artist,
+      genre: genre,
+      year: year,
+    });
+
+    await newCd.save();
+    response.status(201).json(newCd);
+  } catch (error) {
+    next(error);
+  }
 });
 
-// DELETE /cds/:id - Delete a CD
-app.delete('/cds/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = cds.findIndex(cd => cd.id === id);
-  const deleted = cds.splice(index, 1);
-  res.json(deleted[0]);
+// ----------  PUT /cds/:id - Update an existing CD ----------
+app.put("/cds/:id", validateId, async (request, response, next) => {
+  const { id } = request.params;
+  const { title, artist, genre, year } = request.body;
+
+  if (!title || !artist || !genre || !year) {
+    response.status(400).json({
+      error: "Title, artist, genre and year are required.",
+    });
+  }
+
+  try {
+    const updatedCd = await Cd.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          title: title,
+          artist: artist,
+          genre: genre,
+          year: year,
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedCd) {
+      return response.status(404).json({
+        error: "No CD found with that ID.",
+      });
+    }
+
+    return response.json(updatedCd);
+  } catch (error) {
+    next(error);
+  }
 });
 
-// TODO:
-// - Replace in-memory data with a Mongoose model
-// - Replace all CRUD operations with MongoDB queries
-// - Implement query support for filtering and selecting fields
-// - Add proper error checking and validation for inputs and operations
+// ----------  DELETE /cds/:id - Delete a CD ----------
+app.delete("/cds/:id", validateId, async (request, response, next) => {
+  const { id } = request.params;
+
+  try {
+    const deletedCd = await Cd.findByIdAndDelete(id);
+
+    if (!deletedCd) {
+      return response.status(404).json({
+        error: "CD not found.",
+      });
+    }
+
+    return response.status(200).json(deletedCd);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------- Middleware for error handling ----------
+app.use((error, request, response, next) => {
+  console.error(error);
+  return response.status(500).json({
+    error: "An internal server error occurred.",
+  });
+});
+
+function validateId(request, response, next) {
+  const { id } = request.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return response.status(400).json({
+      error: "Invalid CD ID.",
+    });
+  }
+
+  next();
+}
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
