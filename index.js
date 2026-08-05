@@ -19,8 +19,37 @@ const Cd = mongoose.model("cd", cdSchema, "cds");
 
 // ---------- GET /cds - Return all CDs ----------
 app.get("/cds", async (request, response, next) => {
+  const { fields, artist, genre, before } = request.query;
+
+  if (before && Number.isNaN(Number(before))) {
+    return response.status(400).json({
+      error: "The before query parameter must be a valid year.",
+    });
+  }
+
+  const filters = {};
+
+  if (artist) {
+    filters.artist = artist;
+  }
+
+  if (genre) {
+    filters.genre = genre;
+  }
+
+  if (before) {
+    filters.year = {
+      $lt: Number(before),
+    };
+  }
+
   try {
-    const cds = await Cd.find({}, { __v: 0 });
+    if (fields === "title") {
+      const cds = await Cd.find(filters, { title: 1, _id: 0 });
+      return response.json(cds);
+    }
+
+    const cds = await Cd.find(filters, { __v: 0 });
 
     return response.json(cds);
   } catch (error) {
@@ -33,8 +62,7 @@ app.post("/cds", async (request, response, next) => {
   const { title, artist, genre, year } = request.body;
 
   if (!title || !artist || !genre || !year) {
-    response.status(400);
-    return response.json({
+    return response.status(400).json({
       error: "Title, artist, genre, and year are required.",
     });
   }
@@ -48,7 +76,7 @@ app.post("/cds", async (request, response, next) => {
     });
 
     await newCd.save();
-    response.status(201).json(newCd);
+    return response.status(201).json(newCd);
   } catch (error) {
     next(error);
   }
